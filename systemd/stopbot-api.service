@@ -1,0 +1,13 @@
+[Unit]
+Description=Stopbot API
+
+[Service]
+Environment="STATE_PATH=/var/run/stopbot-api"
+Environment="LOG_SERVER=/var/run/stopbot-log.sock"
+ExecStart=/usr/bin/stopbot-api
+RestartSec=0
+Restart=always
+Type=simple
+
+[Install]
+WantedBy=default.target

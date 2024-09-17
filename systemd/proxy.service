@@ -1,0 +1,14 @@
+[Unit]
+Description=Proxy
+
+[Service]
+Environment="SERVER_KEY=/etc/gateway/152.67.124.85.key"
+Environment="SERVER_CERT=/etc/gateway/152.67.124.85.cer"
+Environment="ROOT_CA=/etc/gateway/rootCA.pem"
+ExecStart=/usr/bin/proxy
+RestartSec=0
+Restart=always
+Type=simple
+
+[Install]
+WantedBy=default.target

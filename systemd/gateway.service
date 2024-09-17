@@ -1,0 +1,12 @@
+[Unit]
+Description=Gateway
+
+[Service]
+Environment="CONFIG_PATH=/etc/gateway"
+ExecStart=/usr/bin/gateway
+RestartSec=0
+Restart=always
+Type=simple
+
+[Install]
+WantedBy=default.target

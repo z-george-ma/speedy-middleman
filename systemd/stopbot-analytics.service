@@ -1,0 +1,14 @@
+[Unit]
+Description=Stopbot Analytics
+
+[Service]
+Environment="API_ADDR=localhost:8887"
+Environment="LOG_SERVER=/var/run/stopbot-log.sock"
+Environment="DB_PATH=/var/lib/stopbot"
+ExecStart=/usr/bin/stopbot-analytics
+RestartSec=0
+Restart=always
+Type=simple
+
+[Install]
+WantedBy=default.target

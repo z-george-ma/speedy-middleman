@@ -1,0 +1,38 @@
+{
+    "tls": [
+        {
+            "key": "demo.stopbot.com.au.key",
+            "cert": "demo.stopbot.com.au.cer"
+        },
+        {
+            "key": "api.demo.stopbot.com.au.key",
+            "cert": "api.demo.stopbot.com.au.cer"
+        },
+        {
+            "key": "104.168.96.115.key",
+            "cert": "104.168.96.115.cer",
+            "ca": "rootCA.pem"
+        }
+    ],
+    "routes": [
+        {
+            "sni": "demo.stopbot.com.au",
+            "paths": [
+                {
+                    "root": "/web/demo.stopbot.com.au"
+                }
+            ]
+        },
+        {
+            "sni": "api.demo.stopbot.com.au",
+            "paths": [
+                {
+                    "addr": "http://localhost:8889"
+                }
+            ]
+        }
+    ],
+    "proxy": {
+        "sni": "localhost"
+    }
+}
