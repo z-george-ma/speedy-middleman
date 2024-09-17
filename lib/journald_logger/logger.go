@@ -76,7 +76,7 @@ func (sl *Logger) Start() {
 // NewLogger creates a logger that goes into journald
 // onError is an optional callback if journald socket is not available. If it is unset or returns false, error will be ignored.
 func NewLogger(onError func(error, []byte) bool) (ret *Logger, err error) {
-	conn, err := net.Dial("unixgram", "/run//journal/socket")
+	conn, err := net.Dial("unixgram", "/run/systemd/journal/socket")
 	if err != nil {
 		return
 	}
