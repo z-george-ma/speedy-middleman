@@ -10,6 +10,7 @@ import (
 	"net"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/andybalholm/brotli"
@@ -146,8 +147,14 @@ func Copy(dst io.Writer, src io.Reader, signal chan error, initialData ...[]byte
 	close(signal)
 }
 
+var bufPool = sync.Pool{
+	New: func() any {
+		return make([]byte, 32*1024)
+	},
+}
+
 func CopyFromRaw(dst *brotli.Writer, src *lib.Socket, signal chan error) {
-	buf := make([]byte, 32*1024)
+	buf := bufPool.Get().([]byte)
 	blockRead := false
 	writtenSinceFlush := 0
 
@@ -167,16 +174,19 @@ func CopyFromRaw(dst *brotli.Writer, src *lib.Socket, signal chan error) {
 			if nw < 0 || nr < nw {
 				nw = 0
 				if ew == nil {
+					bufPool.Put(buf)
 					signal <- io.ErrShortWrite // long write
 					return
 				}
 			}
 
 			if ew != nil {
+				bufPool.Put(buf)
 				signal <- ew
 				return
 			}
 			if nr != nw {
+				bufPool.Put(buf)
 				signal <- io.ErrShortWrite
 				return
 			}
@@ -185,6 +195,8 @@ func CopyFromRaw(dst *brotli.Writer, src *lib.Socket, signal chan error) {
 		}
 
 		if er != nil {
+			bufPool.Put(buf)
+
 			if er != io.EOF {
 				signal <- er
 				return
@@ -198,6 +210,7 @@ func CopyFromRaw(dst *brotli.Writer, src *lib.Socket, signal chan error) {
 
 		if nr == 0 && writtenSinceFlush > 0 {
 			if err := dst.Flush(); err != nil {
+				bufPool.Put(buf)
 				signal <- err
 				return
 			}
