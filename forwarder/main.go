@@ -4,7 +4,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"lib"
-	"lib/log"
+	"lib/structured_logger"
 	"net"
 	"os"
 	"time"
@@ -12,11 +12,9 @@ import (
 
 func main() {
 	config := lib.LoadConfig[Config]()
-	logger := lib.Must(log.NewLogger(nil))
+	logger := structured_logger.NewLogger(config.LogLevel)
 
 	lib.AppScope.Init(logger)
-	go logger.Start()
-	defer logger.Close(true)
 
 	serverAddr := lib.Must(lib.UrlToAddress(config.RemoteUrl))
 
@@ -30,10 +28,11 @@ func main() {
 	certs := lib.Must(tls.LoadX509KeyPair(config.ClientCert, config.ClientKey))
 
 	tlsConfig := tls.Config{
-		ServerName:   serverAddr.Host,
-		Certificates: []tls.Certificate{certs},
-		RootCAs:      rootCAs,
-		MinVersion:   tls.VersionTLS13,
+		ServerName:         serverAddr.Host,
+		Certificates:       []tls.Certificate{certs},
+		RootCAs:            rootCAs,
+		MinVersion:         tls.VersionTLS13,
+		InsecureSkipVerify: true,
 		// resumption
 		ClientSessionCache: tls.NewLRUClientSessionCache(1024),
 	}
