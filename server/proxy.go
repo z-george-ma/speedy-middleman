@@ -153,6 +153,18 @@ var bufPool = sync.Pool{
 	},
 }
 
+var cwp = sync.Pool{
+	New: func() any {
+		return brotli.NewWriter(nil)
+	},
+}
+
+var crp = sync.Pool{
+	New: func() any {
+		return brotli.NewReader(nil)
+	},
+}
+
 func CopyFromRaw(dst *brotli.Writer, src *lib.Socket, signal chan error) {
 	buf := bufPool.Get().([]byte)
 	blockRead := false
@@ -236,18 +248,6 @@ func Select[T any](chans []chan T) (index int, value T, ok bool) {
 	}
 
 	return
-}
-
-var cwp = sync.Pool{
-	New: func() any {
-		return brotli.NewWriter(nil)
-	},
-}
-
-var crp = sync.Pool{
-	New: func() any {
-		return brotli.NewReader(nil)
-	},
 }
 
 func Splice(conn net.Conn, cr *brotli.Reader, cw *brotli.Writer, addr string, dialer *net.Dialer, startCopy chan error, b []byte) {

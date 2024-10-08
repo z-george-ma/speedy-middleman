@@ -156,6 +156,18 @@ var bufPool = sync.Pool{
 	},
 }
 
+var cwp = sync.Pool{
+	New: func() any {
+		return brotli.NewWriter(nil)
+	},
+}
+
+var crp = sync.Pool{
+	New: func() any {
+		return brotli.NewReader(nil)
+	},
+}
+
 func CopyFromRaw(dst *brotli.Writer, src *lib.Socket, signal chan error, initialData ...[]byte) {
 	buf := bufPool.Get().([]byte)
 	blockRead := false
@@ -286,10 +298,12 @@ func CopyToRemote(conn *net.TCPConn, addr string, tlsConfig *tls.Config, dialer 
 
 	signals := []chan error{upstream, downstream}
 
-	cw := brotli.NewWriter(tlsConn)
+	cw := cwp.Get().(*brotli.Writer)
+	cw.Reset(tlsConn)
 	defer func() {
 		defer recover()
 		cw.Close()
+		cwp.Put(cw)
 	}()
 
 	go CopyFromRaw(cw, raw, upstream, b...)
@@ -298,7 +312,11 @@ func CopyToRemote(conn *net.TCPConn, addr string, tlsConfig *tls.Config, dialer 
 		return
 	}
 
-	cr := brotli.NewReader(tlsConn)
+	cr := crp.Get().(*brotli.Reader)
+	if cr.Reset(tlsConn) != nil {
+		crp.Put(cr)
+		return
+	}
 
 	go Copy(conn, cr, downstream, len(okResponse))
 
@@ -316,6 +334,7 @@ func CopyToRemote(conn *net.TCPConn, addr string, tlsConfig *tls.Config, dialer 
 			continue
 		}
 
+		crp.Put(cr)
 		return
 	}
 }
