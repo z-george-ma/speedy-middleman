@@ -34,7 +34,7 @@ run: app
 
 .PHONY: release
 release: $(SRC)
-	go build -ldflags="-s -w" --tags musl -a -o app
+	go build -gcflags="-N -l" -ldflags="-s -w" --tags musl -a -o app
 
 .PHONY: utils
 utils: $(SRC)

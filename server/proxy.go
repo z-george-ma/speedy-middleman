@@ -238,12 +238,26 @@ func Select[T any](chans []chan T) (index int, value T, ok bool) {
 	return
 }
 
+var cwp = sync.Pool{
+	New: func() any {
+		return brotli.NewWriter(nil)
+	},
+}
+
+var crp = sync.Pool{
+	New: func() any {
+		return brotli.NewReader(nil)
+	},
+}
+
 func Splice(conn net.Conn, cr *brotli.Reader, cw *brotli.Writer, addr string, dialer *net.Dialer, startCopy chan error, b []byte) {
 	defer func() {
 		defer recover()
 		cw.Close()
+		conn.Close()
+		cwp.Put(cw)
+		crp.Put(cr)
 	}()
-	defer conn.Close()
 
 	// TODO: make it configurable
 	// TODO: check if the connection is alive
@@ -289,21 +303,30 @@ func Splice(conn net.Conn, cr *brotli.Reader, cw *brotli.Writer, addr string, di
 func HandleProxy(conn net.Conn, config *tls.Config, dialer *net.Dialer) {
 	tlsConn := tls.Server(conn, config)
 
-	cr := brotli.NewReader(tlsConn)
+	cr := crp.Get().(*brotli.Reader)
+	if cr.Reset(tlsConn) != nil {
+		tlsConn.Close()
+		crp.Put(cr)
+		return
+	}
+
 	req, b, err := ParseHttpRequest(cr)
 
 	if err != nil {
 		tlsConn.Close()
+		crp.Put(cr)
 		return
 	}
 
-	cw := brotli.NewWriter(tlsConn)
+	cw := cwp.Get().(*brotli.Writer)
+	cw.Reset(tlsConn)
 
 	startCopy := make(chan error, 1)
 
 	go Splice(tlsConn, cr, cw, req.Url, dialer, startCopy, b)
 	if _, err := cw.Write(okResponse); err != nil {
 		cw.Close()
+		cwp.Put(cw)
 		startCopy <- err
 	}
 
