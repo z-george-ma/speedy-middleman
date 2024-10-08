@@ -128,7 +128,19 @@ func ParseHttpRequest(r io.Reader) (ret HttpRequest, remainingBytes []byte, err 
 
 var okResponse []byte = []byte("HTTP/1.1 200 OK\r\n\r\n")
 
-func Copy(dst io.Writer, src io.Reader, signal chan error, skipBytes int) {
+func Copy(dst io.Writer, src io.Reader, signal chan error, skipBytes int, initialData ...[]byte) {
+	for _, d := range initialData {
+		if len(d) == 0 {
+			continue
+		}
+
+		_, err := dst.Write(d)
+		if err != nil {
+			signal <- err
+			return
+		}
+	}
+
 	n := 0
 	if skipBytes > n {
 		b := make([]byte, skipBytes)
@@ -285,40 +297,52 @@ func CopyToRemote(conn *net.TCPConn, addr string, tlsConfig *tls.Config, dialer 
 		return
 	}
 
-	tlsConn := tls.Client(remote, tlsConfig)
-	defer tlsConn.Close()
-
-	if err := tlsConn.Handshake(); err != nil {
-		log.Err().Value("error", err.Error()).Msg("failed to handshake with peer")
-		return
-	}
-
 	upstream := make(chan error)
 	downstream := make(chan error)
 
 	signals := []chan error{upstream, downstream}
 
-	cw := cwp.Get().(*brotli.Writer)
-	cw.Reset(tlsConn)
-	defer func() {
-		defer recover()
-		cw.Close()
-		cwp.Put(cw)
-	}()
+	var remoteConn io.ReadCloser = remote
+	defer remoteConn.Close()
 
-	go CopyFromRaw(cw, raw, upstream, b...)
+	if tlsConfig != nil {
+		tlsConn := tls.Client(remote, tlsConfig)
+		remoteConn = tlsConn
+
+		if err := tlsConn.Handshake(); err != nil {
+			log.Err().Value("error", err.Error()).Msg("failed to handshake with peer")
+			return
+		}
+
+		cw := cwp.Get().(*brotli.Writer)
+		cw.Reset(tlsConn)
+		defer func() {
+			defer recover()
+			cw.Close()
+			cwp.Put(cw)
+		}()
+
+		go CopyFromRaw(cw, raw, upstream, b...)
+	} else {
+		go Copy(remote, raw, upstream, 0, b...)
+	}
 
 	if _, ok := <-startCopy; ok {
 		return
 	}
 
-	cr := crp.Get().(*brotli.Reader)
-	if cr.Reset(tlsConn) != nil {
-		crp.Put(cr)
-		return
-	}
+	var cr *brotli.Reader
+	if tlsConfig != nil {
+		cr = crp.Get().(*brotli.Reader)
+		if cr.Reset(remoteConn) != nil {
+			crp.Put(cr)
+			return
+		}
 
-	go Copy(conn, cr, downstream, len(okResponse))
+		go Copy(conn, cr, downstream, len(okResponse))
+	} else {
+		go Copy(conn, remote, downstream, 0)
+	}
 
 	for len(signals) > 0 {
 		i, e, ok := Select(signals)
@@ -334,7 +358,9 @@ func CopyToRemote(conn *net.TCPConn, addr string, tlsConfig *tls.Config, dialer 
 			continue
 		}
 
-		crp.Put(cr)
+		if cr != nil {
+			crp.Put(cr)
+		}
 		return
 	}
 }
@@ -386,8 +412,11 @@ func HandleConnection(conn net.Conn, serverAddr string, tlsConfig *tls.Config, d
 	log := logger.With().Value("url", req.Url).Value("method", req.Method).Logger()
 	log.Info().Msg("connecting")
 
-	// connection pool
-	go CopyToRemote(conn.(*net.TCPConn), serverAddr, tlsConfig, dialer, log, startCopy, []byte("CONNECT "+host+" HTTP/1.1\r\n\r\n"), initData, b)
+	if tlsConfig != nil {
+		go CopyToRemote(conn.(*net.TCPConn), serverAddr, tlsConfig, dialer, log, startCopy, []byte("CONNECT "+host+" HTTP/1.1\r\n\r\n"), initData, b)
+	} else {
+		go CopyToRemote(conn.(*net.TCPConn), host, nil, dialer, log, startCopy, initData, b)
+	}
 
 	if req.Method != "CONNECT" {
 		close(startCopy)

@@ -16,7 +16,13 @@ func main() {
 
 	lib.AppScope.Init(logger)
 
-	serverAddr := lib.Must(lib.UrlToAddress(config.RemoteUrl))
+	SetDNS()
+
+	var serverAddr lib.NetworkAddress
+
+	if config.RemoteUrl != "" {
+		serverAddr = lib.Must(lib.UrlToAddress(config.RemoteUrl))
+	}
 
 	var rootCAs *x509.CertPool
 	if config.RootCA != "" {
@@ -27,14 +33,18 @@ func main() {
 
 	certs := lib.Must(tls.LoadX509KeyPair(config.ClientCert, config.ClientKey))
 
-	tlsConfig := tls.Config{
-		ServerName:         serverAddr.Host,
-		Certificates:       []tls.Certificate{certs},
-		RootCAs:            rootCAs,
-		MinVersion:         tls.VersionTLS13,
-		InsecureSkipVerify: true,
-		// resumption
-		ClientSessionCache: tls.NewLRUClientSessionCache(1024),
+	var tlsConfig *tls.Config
+
+	if serverAddr.Host != "" {
+		tlsConfig = &tls.Config{
+			ServerName:         serverAddr.Host,
+			Certificates:       []tls.Certificate{certs},
+			RootCAs:            rootCAs,
+			MinVersion:         tls.VersionTLS13,
+			InsecureSkipVerify: true,
+			// resumption
+			ClientSessionCache: tls.NewLRUClientSessionCache(1024),
+		}
 	}
 
 	lc := net.ListenConfig{}
@@ -44,7 +54,7 @@ func main() {
 	dialer := NewTFODialer()
 
 	lib.AppScope.GoWithClose(func() {
-		StartListener(lib.AppScope.Context, server, serverAddr.Address, &tlsConfig, dialer, logger)
+		StartListener(lib.AppScope.Context, server, serverAddr.Address, tlsConfig, dialer, logger)
 	}, func() bool {
 		server.(*net.TCPListener).SetDeadline(time.Now())
 		return false
